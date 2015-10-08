@@ -24,15 +24,13 @@ for row in training:
         text       = nltk.word_tokenize(row[1].decode('utf-8'))
         index      = int(row[0])
         classifier = int(row[2])
-        if index % 100 ==0:
-            print index/2 ,' of tokenizing training'
+        if index % 1000 ==0:
+            print index ,' of training'
 
        
         trainingSet[index] = (text,classifier)
 
-    counter += 1
-    if counter > 1000:
-        break
+    
     
 #open test csv and parse/tockenize the data, 
 fTest      = open(testCSV,'rb')
@@ -43,13 +41,11 @@ for row in validation:
     if (row[0]).isdigit():
         text       = nltk.word_tokenize(row[1].decode('utf-8'))
         index      = int(row[0])
-        if index % 100 ==0:
-            print index ,' of tokenizing validation'
+        if index % 1000 ==0:
+            print index ,' of validation'
         validationSet[index] = text
 
-    counter += 1
-    if counter > 500:
-        break
+   
 
 #dump the dictionarys using pickle so we dont have to reparse every time
 with open("./DataSetDictionarys/trainingSet.txt","wb") as trainFile:
@@ -58,6 +54,6 @@ with open("./DataSetDictionarys/trainingSet.txt","wb") as trainFile:
 with open("./DataSetDictionarys/validationSet.txt","wb") as validationFile:
     pickle.dump(validationSet,validationFile)
     
-    
+print len(trainingSet), ',' ,len(validationSet)
     
 
