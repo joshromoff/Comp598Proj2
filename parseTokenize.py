@@ -21,8 +21,6 @@ training = csv.reader(f)
 trainingCorpus = []
 trainingY      = []
 
-holdOutSetX    = []
-holdOutSetY    = []
 #loop through training set, accumulated the text 
 for row in training:
     if row[0].isdigit():
@@ -31,18 +29,6 @@ for row in training:
 
 f.close()
 
-print len(trainingCorpus)
-#debugging created holdout set###
-count = 0
-while count < 1000:
-    rando = randint(0,len(trainingCorpus)-1)
-    x = trainingCorpus.pop(rando)
-    y = trainingY.pop(rando)
-    holdOutSetX.append(x)
-    holdOutSetY.append(y)
-    count +=1
-
-holdOutSetY = np.array(holdOutSetY)
 ###########################
 
 #cast to vector form
@@ -63,30 +49,22 @@ testingExamples  = [row[1] for row in validation if row[0].isdigit()]
 
 Xtest            = normalizedCountVectorizer.transform(testingExamples)
 
-##debugging with holdoutset
-holdX            = normalizedCountVectorizer.transform(holdOutSetX)
-###
+
 print "X shape = ", X.shape, "Y shape = ", trainingY.shape , "testX shape = ", Xtest.shape
 
 
 #pickle it to be opened later
-with open("./DataSetWithHoldSet/trainingSetX.txt","wb") as trainFileX:
+with open("./DataSetWithDictionarys/trainingSetX.txt","wb") as trainFileX:
     pickle.dump(X,trainFileX)
 
-with open("./DataSetWithHoldSet/validationSet.txt","wb") as validationFile:
+with open("./DataSetWithDictionarys/validationSet.txt","wb") as validationFile:
     pickle.dump(Xtest,validationFile)
 
-with open("./DataSetWithHoldSet/trainingSetY.txt","wb") as trainFileY:
+with open("./DataSetWithDictionarys/trainingSetY.txt","wb") as trainFileY:
     pickle.dump(trainingY,trainFileY)
 
 
-with open("./DataSetWithHoldSet/holdSetX.txt","wb") as holdFileX:
-    pickle.dump(holdX,holdFileX)
 
-with open("./DataSetWithHoldSet/holdSetY.txt","wb") as holdFileY:
-    pickle.dump(holdOutSetY,holdFileY)
-    
-#print normalizedCountVectorizer.get_feature_names()
 
 
 
