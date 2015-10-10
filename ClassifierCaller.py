@@ -1,107 +1,69 @@
-import sys
 import pickle
-
-#add classifier directory to runtime paths
-sys.path.insert(0,"Classifiers")
-
-#import every classifier
-from AbstractClassifier import AbstractClassifier
-from TestClassifier     import TestClassifier
-
-
-
-
-
-
-##################################
-#validationResults(fun,validationSet)
-#description: run the a particular classification function on the validation set
-#input 1: Classifier Object that implements AbstractClassifier
-#input 2: dictionary with key = index (int), value = (tokenized string (list of strings), class)
-#output: validation list of type int
-def classifySet(classifier,Set):
-    classifierDict = {}
-    #loop through validation set appending the classification as we go
-    for key,value in Set.iteritems():
-        text,classif = value
-        classifierDict[key] = classifier.Classify(text)
-    return classifierDict
+from scipy import sparse
+import numpy as np
+import csv
+from sklearn.cross_validation import train_test_split
+from sklearn.ensemble         import BaggingClassifier
+from sklearn.ensemble         import AdaBoostClassifier
+from sklearn.naive_bayes      import MultinomialNB
+from sklearn.neighbors        import KNeighborsClassifier
+from sklearn.linear_model     import Perceptron
 
 
 
-##################################
-#trainTestSplit(trainingSet)
-#description: splits the training set into training and test (we may want to add k-fold)
-#input: training set, dictionary with key = index (int), value = (tokenized string (list of strings),class)
-#output: two dictionarys train/test with key = original index, value = (tokenized string (list of strings),class)
-def trainTestSplit(trainingSet):
-    trainDiv = {key: value for i, (key, value) in enumerate(trainingSet.viewitems()) if i % 2 == 0}
-    testDiv  = {key: value for i, (key, value) in enumerate(trainingSet.viewitems()) if i % 2 == 1}
-
-    return(trainDiv,testDiv)
-
-
-#calculates the difference in the actual data set vs a classifiers prediction
-#they should have identical keys! (we could use lists or a numpy array to make this faster, (don't think its necessary)
-def totalError(dataSet,predictions):
-    if len(set(dataSet.keys()) - set(predictions.keys())) != 0: #this shouldnt happen!
-        print 'ERROR'
-        return 0
-    
-    totalError = 0
-    for key in dataSet:
-        text1,actual = dataSet[key]
-        predicted    = predictions[key]
-        if actual != predicted:
-            totalError += 1
-            
-    return totalError
-
-
-
-
-#MAIN#
-#1)reads in the already parsed data
-#2)splits the training set (still needs work for k fold)
-#3)Evaluates a particular Classifier
-
-
-#we will retrieve these from their respective txt file, were created with parseTokenizer.py
-trainingSet         = {}
-validationSet       = {}
-
-#retrieve dictionarys with pickle
-with open("./DataSetDictionarys/trainingSet.txt","rb") as trainingFile:
-    trainingSet     = pickle.load(trainingFile)
+#retrieve data with pickle
+with open("./DataSetDictionarys/trainingSetX.txt","rb") as trainingFileX:
+    trainingX     = pickle.load(trainingFileX)
 
 print 'done loading training set'
+
+with open("./DataSetDictionarys/trainingSetY.txt","rb") as trainingFileY:
+    trainingY       = pickle.load(trainingFileY)
 
 with open("./DataSetDictionarys/validationSet.txt","rb") as validationFile:
     validationSet   = pickle.load(validationFile)
 
 print 'done loading validation set'
 
-#Split the training set into training and testing (may want to put this in a loop for k-fold)
-(trainDiv,testDiv)  = trainTestSplit(trainingSet)
+
+#Classifier list, to be iterated over
+classifiers = [
+    #KNeighborsClassifier(3),
+    MultinomialNB(),
+    Perceptron(),
+    BaggingClassifier(Perceptron(),n_estimators = 100,max_samples=0.5, max_features=0.5)
+    ]
+
+names = ["MultinomialNB","Perceptron","BaggingPerceptron"]
 
 
-#EXAMPLE of how to evaluate a Classifier for a given training/test split#
-#Object containing a function to classify an example.
-exampleClassifier   = TestClassifier(trainDiv,testDiv)
 
-#Calculate our training error, need to create a prediction vector for our training set
-exampleTrainPredict = classifySet(exampleClassifier,trainDiv)
-trainingError       = totalError(trainDiv,exampleTrainPredict)
 
-#Calculate our test error, need to create a prediction vector for our test set
-exampleTestPredict  = classifySet(exampleClassifier,testDiv)
-testError           = totalError(testDiv,exampleTestPredict)
+#training test splitting
+X_train, X_test, y_train, y_test = train_test_split(trainingX, trainingY, test_size=.4)
 
-#with the classifier create the vector with our predictions
-tempValidationSet   = {key: (text,-1) for key,text in validationSet.iteritems()} #converts validation dictionary to a tuple dictionary to use with classifySet. this could be removed if we reparse the data 
-exampleValid        = classifySet(exampleClassifier,tempValidationSet)
+print "train test split done"
 
-print testError, ',' ,trainingError
+for name,clf in zip(names,classifiers):
+    print "Training using " + name + " classifier"
+    clf.fit(X_train,y_train)
+    print name," fitted"
+    score = clf.score(X_test,y_test)
+    print name , score
 
+#############################
+
+#predict actual results!
+for name,clf in zip(names,classifiers):
+    print "Prediction using " + name + " classifier"
+    clf.fit(trainingX,trainingY)
+    print name," fitted"
+    validationPredictions = clf.predict(validationSet)
+    with open(name + 'predictions.csv','wb') as predictions:
+        writer = csv.writer(predictions)
+        writer.writerow(['Id','Prediction'])
+        counter = 0
+        for prediction in validationPredictions:
+            writer.writerow([counter,prediction])
+            counter += 1
     
-
