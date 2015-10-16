@@ -13,6 +13,7 @@ from sklearn.neighbors        import LSHForest
 from sklearn.linear_model     import Perceptron
 from sklearn.linear_model     import LogisticRegression
 from sklearn.linear_model     import LinearRegression
+from sklearn.linear_model     import RandomizedLogisticRegression
 from sklearn.linear_model     import SGDClassifier
 from sklearn.tree             import DecisionTreeClassifier
 from sklearn.linear_model     import PassiveAggressiveClassifier
@@ -28,27 +29,24 @@ from sklearn.feature_selection import RFECV
 from sklearn.cross_validation import StratifiedKFold
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.pipeline import Pipeline
+from sklearn import cross_validation
 from sklearn.cross_validation import cross_val_predict
+#from sklearn.cross_validation import cross_val_predict_proba
 from sklearn.metrics import accuracy_score
 from gensim.models import Word2Vec
 #FLAGS#
-DOING_PREDICTIONS = False
+DOING_PREDICTIONS = True
 RUN_METAS         = True
 RUN_REGS          = True
-RUN_WD            = False
+RUN_WD            = True
 #K best features, (1,3) gram = 30k,(1,2) = 25k,(1,1)=7.5k
-KBESTNUM = 30000
-
+KBESTNUM = 50000
+KBESTNUMWD = 10
 #K FOLD
 KFOLD  = 5
-#train test split for meta learning
-TESTSPLIT = .1
-#train test split for meta validation
-VALIDSPLIT = .1
-#number of splits for metas
-METAFOLDS = 5
+
 #GRAM "1gram =(1,1)","2gram=(2,2)","12gram=(1,2)","3gram=(3,3)","123gram=(1,3)"
-GRAM = (1,3)
+GRAM = (1,1)
 ################################################
 #csv data extraction
 testCSV  = "./DataSetCSVs/ml_dataset_test_in.csv"
@@ -100,9 +98,10 @@ classifiers = [
     LinearSVC(),
     #LSHForest()
     #BaggingClassifier(SVC(cache_size = 500,degree = 2),n_estimators = 100,max_samples=0.001, max_features=0.5)
-    #LogisticRegression(max_iter = 100, solver = 'newton-cg'),
+    LogisticRegression(max_iter = 100, solver = 'newton-cg'),
     #BaggingClassifier(LinearSVC(),n_estimators = 100,max_samples=0.5, max_features=0.5),
-    #BaggingClassifier(Perceptron(),n_estimators = 100,max_samples=0.5, max_features=0.5)
+    BaggingClassifier(Perceptron(),n_estimators = 100,max_samples=0.5, max_features=0.5),
+    #BaggingClassifier(SGDClassifier(),n_estimators = 100,max_samples=0.5, max_features=0.5)
     #AdaBoostClassifier(DecisionTreeClassifier(max_depth=1),n_estimators = 1000,algorithm='SAMME.R')
     ]
 
@@ -116,9 +115,10 @@ names = [#("MultinomialNB",0),
          ("LinearSVC",0),
          #("LSHForest",0)
          #("SVC",0)
-         #("LogisticRegression",0),
+         ("LogisticRegression",0),
          #("BaggingSVC",0),
-         #("BaggingPerceptron",0)
+         ("BaggingPerceptron",0),
+         #("BaggingSGD",0)
          #("AdaBoost"0,)
          ]
 
@@ -127,43 +127,43 @@ names = [#("MultinomialNB",0),
 #meta classifiers that combines them all
 
 
-metaClassifiers = [ BaggingClassifier(n_estimators = 250,max_samples=0.5, max_features=1.0),
-                    AdaBoostClassifier(n_estimators = 100,algorithm='SAMME.R'),
+metaClassifiers = [ BaggingClassifier(n_estimators = 250,max_samples=0.5, max_features=1.0)
+                    #AdaBoostClassifier(n_estimators = 100,algorithm='SAMME.R'),
                     #SVC()
-                    DecisionTreeClassifier(criterion='gini',class_weight ='auto'),
-                    DecisionTreeClassifier(criterion='entropy',class_weight ='auto'),
-                    RandomForestClassifier(n_estimators=50),
+                    #DecisionTreeClassifier(criterion='gini',class_weight ='auto'),
+                    #DecisionTreeClassifier(criterion='entropy',class_weight ='auto'),
+                    #RandomForestClassifier(n_estimators=50),
                     #BaggingClassifier(SVC(),n_estimators = 10,max_samples=0.1, max_features=.5)
                     #LinearSVC()
                     #LogisticRegression(max_iter = 100, solver = 'newton-cg')
                     ]
 
-metaNames = [("Bagging",0),
-             ("AdaBoost",0),
+metaNames = [("Bagging",0)
+             #("AdaBoost",0),
              #("SVC",0)
-             ("DecisionTreeGini",0),
-             ("DecisionTreeEntropy",0),
-             ("RandomForest",0),
+             #("DecisionTreeGini",0),
+             #("DecisionTreeEntropy",0),
+             #("RandomForest",0),
              #("SVC",0)
              #("LinearSVC",0)
              #("LogisticRegression",0)
              ]
 
 metaClassifiersWD = [ #BaggingClassifier(n_estimators = 250,max_samples=0.5, max_features=1.0),
-                    #AdaBoostClassifier(n_estimators = 500,algorithm='SAMME.R'),
+                    AdaBoostClassifier(n_estimators = 250,algorithm='SAMME.R')
                     #SVC()
                     #DecisionTreeClassifier(criterion='gini',class_weight ='auto'),
                     #DecisionTreeClassifier(criterion='entropy',class_weight ='auto')
-                    LinearSVC()
+                    #LinearSVC()
                     #LogisticRegression(max_iter = 100, solver = 'newton-cg')
                     ]
 metaNamesWD = [#("Bagging",0),
-             #("AdaBoost",0),
+             ("AdaBoost",0)
              #("SVC",0)
              #("DecisionTreeGini",0),
              #("DecisionTreeEntropy",0)
-             ("LinearSVC",0)
-             #("LogisticRegression",0)
+             #("LinearSVC",0)
+             #("Log",0)
              ]
 
 #TRYING TO USE WORD2VEC....
@@ -179,7 +179,7 @@ metaNamesWD = [#("Bagging",0),
 
 
 print "Extracting features based on the training set"
-normalizedCountVectorizer = TfidfVectorizer(ngram_range=GRAM,stop_words='english')
+normalizedCountVectorizer = TfidfVectorizer(ngram_range=GRAM,stop_words='english',max_features=KBESTNUM)
 testingExamples = normalizedCountVectorizer.fit_transform(testingExamples)
 trainingX = normalizedCountVectorizer.transform(trainingCorpus)
 print "NUM FEATURES = ", trainingX.shape[1]
@@ -190,13 +190,14 @@ print "removing features with zero variance"
 sel = VarianceThreshold()
 trainingX = sel.fit_transform(trainingX)
 testingExamples = sel.transform(testingExamples)
-print "feature selecting using " +str(KBESTNUM) 
-
-if KBESTNUM  > trainingX.shape[1]:
-    KBESTNUM = trainingX.shape[1]
-kBest        = SelectKBest(f_classif,k=KBESTNUM)
-trainingX       = kBest.fit_transform(trainingX,trainingY)
-testingExamples        = kBest.transform(testingExamples)
+##print "feature selecting using " +str(KBESTNUM) 
+##
+##if KBESTNUM  > trainingX.shape[1]:
+##    KBESTNUM = trainingX.shape[1]
+###kBest        = SelectKBest(f_classif,k=KBESTNUM)
+##kBest        = SelectKBest(chi2,k=KBESTNUM)
+##trainingX       = kBest.fit_transform(trainingX,trainingY)
+##testingExamples        = kBest.transform(testingExamples)
 
 print "done selecting features"
 
@@ -214,6 +215,7 @@ if not DOING_PREDICTIONS and (RUN_REGS or RUN_METAS):
     for (name,curScore),clf in zip(names,classifiers):
         print  name + " Training"
         predictions = cross_val_predict(clf,Xtrain,y=Ytrain,cv=KFOLD)
+        #predictionProbs = cross_val_predict_proba(clf,Xtrain,y=Ytrain,cv=KFOLD)
         score = accuracy_score(Ytrain,predictions)
         names[counter] = (name,score)
         #ADD PREDICTIONS TO META TRAINING SET
@@ -227,7 +229,7 @@ if not DOING_PREDICTIONS and (RUN_REGS or RUN_METAS):
 ############################################
 #STRATIFIED K FOLD META CLASSIFIERS WITH JUST PREDICTIONS
 if not DOING_PREDICTIONS and RUN_METAS:
-    print "Stratified K-Fold for METAS with " + str(KFOLD) + " folds"  
+    #print "Stratified K-Fold for METAS with " + str(KFOLD) + " folds"  
        
     Xtrain = np.array(metaTrainingSet).T
     Ytrain = trainingY
@@ -246,13 +248,28 @@ if not DOING_PREDICTIONS and RUN_METAS:
 ############################################
 #STRATIFIED K FOLD META CLASSIFIERS WITH DATA + PREDICTIONS (WD)
 if not DOING_PREDICTIONS and RUN_METAS and RUN_WD:
-    print "Stratified K-Fold for METAWDs with " + str(KFOLD) + " folds"  
+    #CHOOSE FEATURES
+    trainingXWD = trainingX
+    #print "removing features with zero variance"
+    sel = VarianceThreshold()
+    trainingX = sel.fit_transform(trainingXWD)
+    #print "feature selecting using " +str(KBESTNUMWD) 
+
+    if KBESTNUMWD  > trainingXWD.shape[1]:
+        KBESTNUMWD = trainingXWD.shape[1]
+    #kBest        = SelectKBest(f_classif,k=KBESTNUM)
+    kBest        = SelectKBest(chi2,k=KBESTNUMWD)
+    trainingXWD       = kBest.fit_transform(trainingXWD,trainingY)
+
+    #print "done selecting features"
+    #print "Stratified K-Fold for METAWDs with " + str(KFOLD) + " folds"  
 
     metaArray = np.array(metaTrainingSet).T
     
-    Xtrain = sparse.hstack((trainingX,metaArray))
+    Xtrain = sparse.hstack((trainingXWD,metaArray))
     Ytrain = trainingY
 
+    #print "done combining data and predictors"
     #print Xtrain.shape
     counter = 0
     for (name,curScore),clf in zip(metaNamesWD,metaClassifiersWD):
@@ -302,8 +319,23 @@ if DOING_PREDICTIONS:
                 writer.writerow([counter,prediction])
                 counter += 1
     if RUN_WD:
-        metaTrainingXWD = sparse.hstack((trainingX,metaTrainingX))
-        metaPredictionXWD = sparse.hstack((validationSet,metaPredictionXWD))
+        #CHOOSE FEATURES
+        trainingXWD = trainingX
+        testingExamplesWD = testingExamples
+        #print "removing features with zero variance"
+        sel = VarianceThreshold()
+        trainingXWD = sel.fit_transform(trainingXWD)
+        testingExamplesWD = sel.transform(testingExamplesWD)
+        #print "feature selecting using " +str(KBESTNUMWD) 
+
+        if KBESTNUMWD  > trainingXWD.shape[1]:
+            KBESTNUMWD = trainingXWD.shape[1]
+        #kBest        = SelectKBest(f_classif,k=KBESTNUM)
+        kBest        = SelectKBest(chi2,k=KBESTNUMWD)
+        trainingXWD       = kBest.fit_transform(trainingXWD,trainingY)
+        testingExamplesWD = kBest.transform(testingExamplesWD)
+        metaTrainingXWD = sparse.hstack((trainingXWD,metaTrainingX))
+        metaPredictionXWD = sparse.hstack((testingExamplesWD,metaPredictionX))
         for (name,curScore),clf in zip(metaNamesWD,metaClassifiersWD):
             print "Prediction using " + "meta" + name + " classifier"
             clf.fit(metaTrainingXWD,trainingY)
