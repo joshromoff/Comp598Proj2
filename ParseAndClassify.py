@@ -31,9 +31,10 @@ from sklearn.feature_selection import VarianceThreshold
 from sklearn.pipeline import Pipeline
 from sklearn import cross_validation
 from sklearn.cross_validation import cross_val_predict
+from sklearn.cross_validation import cross_val_apply
 #from sklearn.cross_validation import cross_val_predict_proba
 from sklearn.metrics import accuracy_score
-from gensim.models import Word2Vec
+#from gensim.models import Word2Vec
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import auc
@@ -45,11 +46,12 @@ DOING_PREDICTIONS = False
 RUN_METAS         = True
 RUN_REGS          = True
 RUN_WD            = True
+RUN_WDP           = True
 #K best features, (1,3) gram = 30k,(1,2) = 25k,(1,1)=7.5k
 KBESTNUM = 500000
 KBESTNUMWD = 10
 #K FOLD
-KFOLD  = 10
+KFOLD  = 2
 
 #GRAM "1gram =(1,1)","2gram=(2,2)","12gram=(1,2)","3gram=(3,3)","123gram=(1,3)"
 GRAM = (1,1)
@@ -98,13 +100,14 @@ classifiers = [
     #("MultinomialNB",0,MultinomialNB(),dict(),dict(),dict()),
     #("Perceptron",0,Perceptron(),dict(),dict(),dict()),
     #("KNeighbors",0,KNeighborsClassifier(n_neighbors=1,algorithm='ball_tree',leaf_size=1),dict(),dict(),dict()),
-    #("Tree",0,DecisionTreeClassifier(max_depth=500,max_features=.05),dict(),dict(),dict()),
+    #("Tree",0,DecisionTreeClassifier(max_depth=3,max_features=.05),dict(),dict(),dict()),
     #("SGDClassifier",0,SGDClassifier(),dict(),dict(),dict()),
-    ("PassiveAggressive",0,PassiveAggressiveClassifier(),dict(),dict(),dict()),
-    ("LinearSVC",0,LinearSVC(),dict(),dict(),dict()),
+    #("PassiveAggressive",0,PassiveAggressiveClassifier(),dict(),dict(),dict()),
+    #("LinearSVC",0,LinearSVC(),dict(),dict(),dict()),
     #("LSHForest",0,LSHForest(),dict(),dict(),dict()),
     #("BaggingSVC",0,BaggingClassifier(SVC(cache_size = 500,degree = 2),n_estimators = 100,max_samples=0.001, max_features=0.5),dict(),dict(),dict()),
-    #("LogisticRegression",0,LogisticRegression(max_iter = 100, solver = 'newton-cg'),dict(),dict(),dict()),
+    #("LogisticRegression",0,LogisticRegression(max_iter = 20, solver = 'newton-cg'),dict(),dict(),dict()),
+    ("SVC",0,SVC(kernel='linear',degree=1,max_iter =1,probability =True),dict(),dict(),dict())
     #BaggingClassifier(LinearSVC(),n_estimators = 100,max_samples=0.5, max_features=0.5),dict(),dict(),dict()),
     #("BaggingPerceptron",0,BaggingClassifier(Perceptron(),n_estimators = 100,max_samples=0.5, max_features=0.5),dict(),dict(),dict())
     #("BaggingSGD",0,BaggingClassifier(SGDClassifier(),n_estimators = 100,max_samples=0.5, max_features=0.5),dict(),dict(),dict()),
@@ -117,8 +120,8 @@ classifiers = [
 #meta classifiers that combines them all
 
 
-metaClassifiers = [ ("Bagging",0,BaggingClassifier(n_estimators = 250,max_samples=0.5, max_features=1.0),dict(),dict(),dict())
-                    #AdaBoostClassifier(n_estimators = 100,algorithm='SAMME.R'),
+metaClassifiers = [ #("Bagging",0,BaggingClassifier(n_estimators = 250,max_samples=0.5, max_features=1.0),dict(),dict(),dict())
+                    ("AdaBoost",0,AdaBoostClassifier(n_estimators = 25,algorithm='SAMME.R'),dict(),dict(),dict())
                     #SVC()
                     #DecisionTreeClassifier(criterion='gini',class_weight ='auto'),
                     #DecisionTreeClassifier(criterion='entropy',class_weight ='auto'),
@@ -131,7 +134,16 @@ metaClassifiers = [ ("Bagging",0,BaggingClassifier(n_estimators = 250,max_sample
 
 
 metaClassifiersWD = [ #BaggingClassifier(n_estimators = 250,max_samples=0.5, max_features=1.0),
-                    ("AdaBoost",0,AdaBoostClassifier(n_estimators = 250,algorithm='SAMME.R'),dict(),dict(),dict())
+                    ("AdaBoost",0,AdaBoostClassifier(n_estimators = 25,algorithm='SAMME.R'),dict(),dict(),dict())
+                    #SVC()
+                    #DecisionTreeClassifier(criterion='gini',class_weight ='auto'),
+                    #DecisionTreeClassifier(criterion='entropy',class_weight ='auto')
+                    #LinearSVC()
+                    #LogisticRegression(max_iter = 100, solver = 'newton-cg')
+                    ]
+
+metaClassifiersWDP = [ #BaggingClassifier(n_estimators = 250,max_samples=0.5, max_features=1.0),
+                    ("AdaBoost",0,AdaBoostClassifier(n_estimators = 25,algorithm='SAMME.R'),dict(),dict(),dict())
                     #SVC()
                     #DecisionTreeClassifier(criterion='gini',class_weight ='auto'),
                     #DecisionTreeClassifier(criterion='entropy',class_weight ='auto')
@@ -175,10 +187,11 @@ testingExamples = sel.transform(testingExamples)
 print "done selecting features"
 
 metaTrainingSet = []
+metaTrainingSetProbs = []
 metaPredictionSet = []
 ############################################
 #STRATIFIED K FOLD REGULAR CLASSIFIERS
-if not DOING_PREDICTIONS and (RUN_REGS or RUN_METAS):
+if not DOING_PREDICTIONS and RUN_REGS:
     print "Stratified K-Fold with " + str(KFOLD) + " folds"  
        
     Xtrain = trainingX
@@ -188,13 +201,14 @@ if not DOING_PREDICTIONS and (RUN_REGS or RUN_METAS):
     for (name,curScore,clf,tpr,fpr,aucRoc) in classifiers:
         print  name + " Training"
         predictions = cross_val_predict(clf,Xtrain,y=Ytrain,cv=KFOLD)
-        #predictionProbs = cross_val_predict_proba(clf,Xtrain,y=Ytrain,cv=KFOLD)
+        predictProbs = cross_val_apply(clf,Xtrain,y=Ytrain,cv=KFOLD,apply_func ="predict_proba")
         score = accuracy_score(Ytrain,predictions)
         print name,score
         #ROC CURVE
         for i in range(0,4):
-            fpr[i], tpr[i], threshold = roc_curve(Ytrain, predictions, pos_label=i)
+            fpr[i], tpr[i], threshold = roc_curve(Ytrain, predictProbs[:,i], pos_label=i)
             aucRoc[i] = auc(fpr[i],tpr[i])
+            metaTrainingSetProbs.append(predictProbs[:,i])
         #ADD scores and curves
         classifiers[counter] = (name,score,clf,tpr,fpr,aucRoc)
         #ADD PREDICTIONS TO META TRAINING SET
@@ -218,10 +232,11 @@ if not DOING_PREDICTIONS and RUN_METAS:
         print  name + " Training"
         predictions = cross_val_predict(clf,Xtrain,y=Ytrain,cv=KFOLD)
         score = accuracy_score(Ytrain,predictions)
+        predictProbs = cross_val_apply(clf,Xtrain,y=Ytrain,cv=KFOLD,apply_func ="predict_proba")
         print name,score
         #ROC CURVE
         for i in range(0,4):
-            fpr[i], tpr[i], threshold = roc_curve(Ytrain, predictions, pos_label=i)
+            fpr[i], tpr[i], threshold = roc_curve(Ytrain, predictProbs[:,i], pos_label=i)
             aucRoc[i] = auc(fpr[i],tpr[i])
         #ADD scores and curves
         metaClassifiers[counter] = (name,score,clf,tpr,fpr,aucRoc)
@@ -232,7 +247,7 @@ if not DOING_PREDICTIONS and RUN_METAS:
 #METAS!!!!###
 ############################################
 #STRATIFIED K FOLD META CLASSIFIERS WITH DATA + PREDICTIONS (WD)
-if not DOING_PREDICTIONS and RUN_METAS and RUN_WD:
+if not DOING_PREDICTIONS and RUN_WD:
     #CHOOSE FEATURES
     trainingXWD = trainingX
     #print "removing features with zero variance"
@@ -260,11 +275,12 @@ if not DOING_PREDICTIONS and RUN_METAS and RUN_WD:
     for (name,curScore,clf,tpr,fpr,aucRoc) in metaClassifiersWD:
         print  name + " Training"
         predictions = cross_val_predict(clf,Xtrain,y=Ytrain,cv=KFOLD)
+        predictProbs = cross_val_apply(clf,Xtrain,y=Ytrain,cv=KFOLD,apply_func ="predict_proba")
         score = accuracy_score(Ytrain,predictions)
         print name,score
         #ROC CURVE
         for i in range(0,4):
-            fpr[i], tpr[i], threshold = roc_curve(Ytrain, predictions, pos_label=i)
+            fpr[i], tpr[i], threshold = roc_curve(Ytrain, predictProbs[:,i], pos_label=i)
             aucRoc[i] = auc(fpr[i],tpr[i])
         #ADD scores and curves
         metaClassifiers[counter] = (name,score,clf,tpr,fpr,aucRoc)
@@ -272,6 +288,54 @@ if not DOING_PREDICTIONS and RUN_METAS and RUN_WD:
         
     #for name,score in metaNamesWD: print name + "DATA" ,float(score)
 
+############################################
+#STRATIFIED K FOLD META CLASSIFIERS WITH DATA + PREDICTIONS (WD)
+if not DOING_PREDICTIONS and RUN_WDP:
+    #CHOOSE FEATURES
+    trainingXWD = trainingX
+    #print "removing features with zero variance"
+    sel = VarianceThreshold()
+    trainingX = sel.fit_transform(trainingXWD)
+    #print "feature selecting using " +str(KBESTNUMWD) 
+
+    if KBESTNUMWD  > trainingXWD.shape[1]:
+        KBESTNUMWD = trainingXWD.shape[1]
+    #kBest        = SelectKBest(f_classif,k=KBESTNUM)
+    kBest        = SelectKBest(chi2,k=KBESTNUMWD)
+    trainingXWD       = kBest.fit_transform(trainingXWD,trainingY)
+
+    #print "done selecting features"
+    #print "Stratified K-Fold for METAWDs with " + str(KFOLD) + " folds"  
+
+    metaArray = np.array(metaTrainingSetProbs).T
+    
+    Xtrain = sparse.hstack((trainingXWD,metaArray))
+    Ytrain = trainingY
+
+    #print "done combining data and predictors"
+    #print Xtrain.shape
+    counter = 0
+    for (name,curScore,clf,tpr,fpr,aucRoc) in metaClassifiersWDP:
+        print  name + " Training"
+        predictions = cross_val_predict(clf,Xtrain,y=Ytrain,cv=KFOLD)
+        predictProbs = cross_val_apply(clf,Xtrain,y=Ytrain,cv=KFOLD,apply_func ="predict_proba")
+        score = accuracy_score(Ytrain,predictions)
+        print name,score
+        #ROC CURVE
+        for i in range(0,4):
+            fpr[i], tpr[i], threshold = roc_curve(Ytrain, predictProbs[:,i], pos_label=i)
+            aucRoc[i] = auc(fpr[i],tpr[i])
+        #ADD scores and curves
+        metaClassifiers[counter] = (name,score,clf,tpr,fpr,aucRoc)
+        #CONFUSION MATRIX
+        plt.figure()
+        cm = confusion_matrix(trainingY, predictions)
+        plt.imshow(cm,interpolation='nearest')
+        plt.savefig('./Figures/CM/'+name+'cm.png')
+        
+        counter += 1
+
+        
 #OUTPUT GRAPHS AND SCORES
 if not DOING_PREDICTIONS:
     for i in range(0,4):
@@ -288,6 +352,10 @@ if not DOING_PREDICTIONS:
             for (name,curScore,clf,tpr,fpr,aucRoc) in metaClassifiersWD:
             # Plot of a ROC curve for a specific class
                 plt.plot(fpr[i], tpr[i],label='metaWD '+name+ '(area = %0.2f)' % aucRoc[i])
+        if RUN_WDP:
+            for (name,curScore,clf,tpr,fpr,aucRoc) in metaClassifiersWDP:
+            # Plot of a ROC curve for a specific class
+                plt.plot(fpr[i], tpr[i],label='metaWDP '+name+ '(area = %0.2f)' % aucRoc[i])
         plt.plot([0, 1], [0, 1], 'k--')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
@@ -295,8 +363,10 @@ if not DOING_PREDICTIONS:
         plt.ylabel('True Positive Rate')
         plt.title('Receiver operating characteristic' +str(i))
         plt.legend(loc="lower right")
-        pylab.savefig('./Figures/Roc/'+'ROC'+str(i))
+        plt.savefig('./Figures/Roc/'+'ROC'+str(i))
 
+        
+                
 
 #######################################
 ##predict actual results!
