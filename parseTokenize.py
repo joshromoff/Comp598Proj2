@@ -5,6 +5,71 @@ import pickle
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
+
+###########################
+def doTFIDFVectorizer(trainingY) :
+    #cast to vector form
+    trainingY = np.array(trainingY)
+    
+    #normalized count vector, could use CountVectorizer() instead
+    #word needs to appear twice and not be a stop word.
+    normalizedCountVectorizer = TfidfVectorizer(min_df=2,stop_words='english')
+    
+    X = normalizedCountVectorizer.fit_transform(trainingCorpus)
+    
+    
+    fTest            = open(testCSV,'rb')
+    validation       = csv.reader(fTest)
+    
+    testingExamples  = [row[1] for row in validation if row[0].isdigit()]
+    
+    Xtest            = normalizedCountVectorizer.transform(testingExamples)
+    
+    
+    print "X shape = ", X.shape, "Y shape = ", trainingY.shape , "testX shape = ", Xtest.shape
+    
+    
+    #pickle it to be opened later
+    with open("./DataSetDictionarys/trainingSetX.txt","wb") as trainFileX:
+        pickle.dump(X,trainFileX)
+    
+    with open("./DataSetDictionarys/validationSet.txt","wb") as validationFile:
+        pickle.dump(Xtest,validationFile)
+    
+    with open("./DataSetDictionarys/trainingSetY.txt","wb") as trainFileY:
+        pickle.dump(trainingY,trainFileY)
+    
+def doCountVectorizer(trainingY) :
+    #cast to vector form
+    trainingY = np.array(trainingY)
+    
+    #normalized count vector, could use CountVectorizer() instead
+    #word needs to appear twice and not be a stop word.
+    #normalizedCountVectorizer = TfidfVectorizer(min_df=2,stop_words='english')
+    countVectorizer = CountVectorizer(min_df=2, stop_words='english')
+    
+    X = countVectorizer.fit_transform(trainingCorpus)
+    
+    fTest            = open(testCSV,'rb')
+    validation       = csv.reader(fTest)
+    
+    testingExamples  = [row[1] for row in validation if row[0].isdigit()]
+    
+    Xtest            = countVectorizer.transform(testingExamples)
+    
+    print "X shape = ", X.shape, "Y shape = ", trainingY.shape , "testX shape = ", Xtest.shape
+    
+    
+    #pickle it to be opened later
+    with open("./DataSetDictionarys/trainingSetX2.txt","wb") as trainFileX:
+        pickle.dump(X,trainFileX)
+    
+    with open("./DataSetDictionarys/validationSet2.txt","wb") as validationFile:
+        pickle.dump(Xtest,validationFile)
+    
+    with open("./DataSetDictionarys/trainingSetY2.txt","wb") as trainFileY:
+        pickle.dump(trainingY,trainFileY)
+
 #the goal here is to only have to parse the data once
 #save it as dictionarys to be accessed by every classifier we test.
 
@@ -29,47 +94,6 @@ for row in training:
 
 f.close()
 
-###########################
-
-#cast to vector form
-trainingY = np.array(trainingY)
-
-#normalized count vector, could use CountVectorizer() instead
-#word needs to appear twice and not be a stop word.
-normalizedCountVectorizer = TfidfVectorizer(min_df=2,stop_words='english')
-
-X = normalizedCountVectorizer.fit_transform(trainingCorpus)
-
-
-
-fTest            = open(testCSV,'rb')
-validation       = csv.reader(fTest)
-
-testingExamples  = [row[1] for row in validation if row[0].isdigit()]
-
-Xtest            = normalizedCountVectorizer.transform(testingExamples)
-
-
-print "X shape = ", X.shape, "Y shape = ", trainingY.shape , "testX shape = ", Xtest.shape
-
-
-#pickle it to be opened later
-with open("./DataSetWithDictionarys/trainingSetX.txt","wb") as trainFileX:
-    pickle.dump(X,trainFileX)
-
-with open("./DataSetWithDictionarys/validationSet.txt","wb") as validationFile:
-    pickle.dump(Xtest,validationFile)
-
-with open("./DataSetWithDictionarys/trainingSetY.txt","wb") as trainFileY:
-    pickle.dump(trainingY,trainFileY)
-
-
-
-
-
-
-
-    
-
+doTFIDFVectorizer(trainingY)
 
 
