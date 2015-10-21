@@ -15,6 +15,7 @@ import string
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.feature_selection import f_classif
 from sklearn.feature_selection import SelectKBest
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 parameters = None
 numOutputs = {}
@@ -27,17 +28,17 @@ def doLimitedSetNaiveBayes() :
     trainingY=None
         
     #we use the count vectorizer output, not the tf-idf output
-    with open("./DataSetDictionarys/trainingSetX2.txt","rb") as trainFileX:
+    with open("./DataSetDictionarys/trainingSetX.txt","rb") as trainFileX:
         X = pickle.load(trainFileX)
     
-    with open("./DataSetDictionarys/validationSet2.txt","rb") as validationFile:
+    with open("./DataSetDictionarys/validationSet.txt","rb") as validationFile:
         Xtest = pickle.load(validationFile)
     
-    with open("./DataSetDictionarys/trainingSetY2.txt","rb") as trainFileY:
+    with open("./DataSetDictionarys/trainingSetY.txt","rb") as trainFileY:
         trainingY = pickle.load(trainFileY)
 
     #K best features
-    KBESTNUM = 200
+    KBESTNUM = 100
     
     print "ORIGINAL #FEATURES", X.shape[1]
     print "removing features with zero variance"
@@ -50,17 +51,63 @@ def doLimitedSetNaiveBayes() :
     
     print "done selecting features"
     
-    skf = sklearn.cross_validation.StratifiedKFold(trainingY, n_folds=4)
+    skf = sklearn.cross_validation.StratifiedKFold(trainingY, n_folds=5)
     
     for train_index, test_index in skf:
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = trainingY[train_index], trainingY[test_index]
-    
-        features = fitBinaryNaiveBayes(X_train, y_train)
-        Yprime = predict(X_test, features, usetfidf = False)
+
+        features = fitNormalBayes(X_train, y_train)
+        Yprime = predict(X_test, features, useNormal = True)
         print(getSuccessRate(Yprime, y_test))
 
-def fitTFIDFNaiveBayes(data, trainingY):
+def doLimitedWithReloading() :
+    testCSV           = "./DataSetCSVs/ml_dataset_test_in.csv"
+    trainCSV          = "./DataSetCSVs/ml_dataset_train.csv"
+
+    #open training csv and parse the data
+    #format {index,text,class}
+    f                 = open(trainCSV,'rb')
+    training          = csv.reader(f)
+
+    trainingCorpus    = []
+    trainingY         = []
+
+    #loop through training set, accumulated the text
+    print "Reading in Training csv"
+    for row in training:
+        if row[0].isdigit():
+            trainingCorpus.append(row[1])
+            trainingY.append(int(row[2]))
+
+    f.close()
+    #cast to vector form
+    trainingY         = np.array(trainingY)
+    trainingCorpus    = np.array(trainingCorpus)
+
+    #trainingCorpus = trainingCorpus.reshape(len(trainingCorpus),1)
+
+
+    #grab validation set
+    print "Reading in Validation csv"
+    fTest             = open(testCSV,'rb')
+    validation        = csv.reader(fTest)
+
+    testingExamples   = [row[1] for row in validation if row[0].isdigit()]
+    fTest.close()
+
+    #VECTORIZE
+    print "Extracting features based on the training set"
+    normalizedCountVectorizer = TfidfVectorizer(ngram_range=(1,1),stop_words='english',max_features=100)
+    testingExamples           = normalizedCountVectorizer.fit_transform(testingExamples)
+    trainingX                 = normalizedCountVectorizer.transform(trainingCorpus)
+    print "NUM FEATURES = ", trainingX.shape[1]
+    
+    features = fitNormalBayes(trainingX, trainingY)
+    Yprime = predict(trainingX, features, useNormal = True)
+    print(getSuccessRate(Yprime, trainingY))
+
+def fitNormalBayes(data, trainingY):
     #data is expected to be a matrix with the final columns as the outputs
     #needs to figure out the probabilities given the output  
     
@@ -72,7 +119,6 @@ def fitTFIDFNaiveBayes(data, trainingY):
             numOutputs[output] = 0
         numOutputs[output] += 1 
         total += 1
-    
     for key in numOutputs.keys() :
         probabOfOutput[key] = numOutputs[key] * 1.0 / total
     
@@ -84,25 +130,16 @@ def fitTFIDFNaiveBayes(data, trainingY):
     #we will model continuous features as normal distributions by output
     features = [] #list of inputs by feature by output   
     distrs = []
-    for i in range(data.shape[1]) : #foreach feature/column
-        #print i
-        byFeature = []
+    for i in range(np.shape(data)[1]) : #foreach feature/column
         featureInstance = [[], [], [], []]
-    
-        #tf-idf
         col = data.getcol(i)
         nonZeros = col.nonzero()
         for index in range(len(nonZeros[0])) :
             #all the cols should be 0, one column
             featureInstance[trainingY[nonZeros[0][index]]].extend(col[index][0].todense())
-
-
         features.append(featureInstance)
     # features is [numCols, numCategories, numInputsInCategory]
-    
     print ('have features')
-    
-    #tf-idf only
     print np.shape(features)
     for feature in features :
         byFeature = []
@@ -112,27 +149,13 @@ def fitTFIDFNaiveBayes(data, trainingY):
             #distribution of data in this category
             numNonZeros = len(outputVals)
             numOutputsOfCateg = numOutputs[i]
-            numOtherCats = data.shape[0] - numOutputsOfCateg
-
-            #print (type(outputVals))
-            #print np.shape(outputVals)
-            mean = np.mean(np.append(np.array(outputVals), np.zeros((numOutputsOfCateg - numNonZeros, 1))))
-            std = np.std(np.append(np.array(outputVals), np.zeros((numOutputsOfCateg - numNonZeros , 1))))
-            
-            #distribution of data in other categories
-            othersNonZeros = []
-            for category in feature :
-                othersNonZeros.extend([datum for datum in category if (feature.index(category) != i)])
-            meanNotOutput = np.mean(np.append(np.array(othersNonZeros), np.zeros((numOtherCats - len(othersNonZeros) , 1))))
-            stdNotOutput = np.std(np.append(np.array(othersNonZeros), np.zeros((numOtherCats - len(othersNonZeros) , 1))))
-            
-            byFeature.append([mean, std, meanNotOutput, stdNotOutput])
-  
+            arrWithZeros = np.append(np.array(outputVals), np.zeros((numOutputsOfCateg - numNonZeros, 1)))
+            mean = np.mean(arrWithZeros)
+            std = np.std(arrWithZeros)
+            byFeature.append([mean, std])
         distrs.append(byFeature)
-
-    #tf-idf distrs is 3d list (numFeatures, numOutputs, 4)
+    #distrs is 3d list (numFeatures, numOutputs, 4)
     print('have distrs')
-    
     return distrs
 
 def fitBinaryNaiveBayes(data, trainingY):
@@ -189,7 +212,7 @@ def fitBinaryNaiveBayes(data, trainingY):
     
     return distrs
 
-def predict(data, distrs, usetfidf = False):
+def predict(data, distrs, useNormal = False):
     #takes in a set of features used for training and return a prediction
     #data is assumed to already be in the form of the features that we are looking at, in this case the words
 
@@ -200,30 +223,30 @@ def predict(data, distrs, usetfidf = False):
     for i in range(data.shape[0]) :
         #for each input
         #print i, data.shape[0], np.shape(distrs)
-        maxProb = -1e300
+        maxProb = None
         toRetOutput = -1
-        for output in range(len(distrs[1])) :
-            p = probabOfOutput[output]
-            bias = np.log(p/(1-p))
+        for output in range(len(distrs[1])) : # for each category 0 - 3
             probSum = 0
+            #p = probabOfOutput[output]
+            #bias = np.log(p) - np.log(1-p)
+            #probSum += bias
             for j in distrs :
                 # for each feature
-                if usetfidf :
-                    probSum+=tfidfPredictAdd(output, data, i, j)
+                if useNormal :
+                    probSum += normalPredictAdd(output, data, i, j)
                 else :
                     probSum += binaryPredictAdd(output, data, i, j)
-            totalProb = bias + probSum
-            if totalProb > maxProb :
-                maxProb = totalProb
+            if maxProb == None or probSum > maxProb :
+                maxProb = probSum
                 toRetOutput = output
         Y.extend([toRetOutput])
-        
+
     return Y
 
-def tfidfPredictAdd(output, data, i, j) :
+def normalPredictAdd(output, data, i, j) :
     prob = normpdf(data[i,output], j[output][0], j[output][1])
-    probGivenNot = normpdf(data[i,output], j[output][2], j[output][3])         
-    return np.log(prob) - np.log(probGivenNot)
+    #probGivenNot = normpdf(data[i,output], j[output][2], j[output][3])         
+    return prob #- np.log(probGivenNot)
 
 def binaryPredictAdd(output, data, i, j) :
     probGivenCat = j[output][0]
@@ -239,13 +262,15 @@ def binaryPredictAdd(output, data, i, j) :
     return np.log(numerator)  - np.log(denominator)
 
 #source : http://stackoverflow.com/questions/12412895/calculate-probability-in-normal-distribution-given-mean-std-in-python
-def normpdf(x, mean, sd):
-   # print "x, mean, sd", x, mean, sd
-    var = sd**2
-    pi = 3.1415926
-    denom = (2*pi*var)**.5
-    num = math.exp(-(x-mean)**2/(2*var))
-    return num/denom    
+def normpdf(x, mean, std):
+    var =  math.pow(std, 2)
+    denom = math.pow((2*math.pi*var), .5)
+    num = math.exp(- math.pow((x-mean),2)/(2*var))
+    return np.log(num) - np.log(denom)
+
+def gaussianpdf(x, mean, std):
+    exponent = math.exp(-(math.pow(x-mean,2)/(2*math.pow(std,2))))
+    return (1 / (math.sqrt(2*math.pi) * std)) * exponent
 
 def getRowIndex(data, row) :
     #didn't end up using, leaving in in case I need it
@@ -383,5 +408,6 @@ def makeFullPredictions(probabilities, vocabSize, corpusSizeInCat, categoryRatio
     return Y
 
 
-doFullNaiveBayes()
+#doFullNaiveBayes()
 #doLimitedSetNaiveBayes()
+doLimitedWithReloading()

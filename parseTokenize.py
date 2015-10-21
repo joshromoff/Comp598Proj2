@@ -94,6 +94,6 @@ for row in training:
 
 f.close()
 
-doCountVectorizer(trainingY)
+doTFIDFVectorizer(trainingY)
 
 
