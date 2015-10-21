@@ -8,6 +8,7 @@ Created on Sun Oct 11 19:45:18 2015
 import numpy as np
 import pickle
 import math
+from sklearn import cross_validation
 
 parameters = None
 numOutputs = {}
@@ -38,7 +39,7 @@ def fitTFIDFNaiveBayes(data, trainingY):
     features = [] #list of inputs by feature by output   
     distrs = []
     for i in range(data.shape[1]) : #foreach feature/column
-        print i
+        #print i
         byFeature = []
         featureInstance = [[], [], [], []]
     
@@ -114,20 +115,20 @@ def fitBinaryNaiveBayes(data, trainingY):
     data = data.todense()    
     distrs = []
     for i in range(data.shape[1]) : #foreach feature/column
-        print i
+        #print i
         byFeature = []
         featureInstance = [[], [], [], []]
         
         #binary
         for j in range(4) :
-            dataI = data[trainingY[:] == j , i] #gets all non 0 values
+            dataI = data[trainingY[:] == j , i] #get all data with the correct category
             dataNotI = data[trainingY[:] != j , i]
             featureInstance[j] = dataI
             
             #get p of token existing or not
             onesCat = dataI[dataI[:] > 0]
             onesNotCat = dataNotI[dataNotI[:] > 0]
-            probGivenCat = onesCat.shape[1] * 1. /  dataI.shape[0]          
+            probGivenCat = onesCat.shape[1] * 1. /  dataI.shape[0]
             probGivenNotCat =  onesNotCat.shape[1] * 1. /  dataI.shape[0]
             byFeature.append([probGivenCat, probGivenNotCat])
         distrs.append(byFeature)
@@ -144,14 +145,15 @@ def fitBinaryNaiveBayes(data, trainingY):
 
 def predict(data, distrs, usetfidf = False):
     #takes in a set of features used for training and return a prediction
-    
-    data = data.todense()    
+    #data is assumed to already be in the form of the features that we are looking at, in this case the words
+
+    data = data.todense()
     print(data.shape)
     
     Y = []
     for i in range(data.shape[0]) :
         #for each input
-        print i, data.shape[0], np.shape(distrs)
+        #print i, data.shape[0], np.shape(distrs)
         maxProb = 1e-300
         toRetOutput = -1
         for output in range(len(distrs[1])) :
@@ -237,7 +239,7 @@ from sklearn.feature_selection import f_classif
 from sklearn.feature_selection import SelectKBest
 
 #K best features
-KBESTNUM = 400
+KBESTNUM = 200
  
 print "ORIGINAL #FEATURES", X.shape[1]
 print "removing features with zero variance"
@@ -247,9 +249,15 @@ print "feature selecting using " +str(KBESTNUM)
 
 kBest         = SelectKBest(f_classif,k=KBESTNUM)
 X     = kBest.fit_transform(X,trainingY)
- 
+
 print "done selecting features"
 
-features = fitBinaryNaiveBayes(X, trainingY)
-Yprime = predict(X, features)
-print(getSuccessRate(Yprime, trainingY))
+skf = cross_validation.StratifiedKFold(trainingY, n_folds=4)
+
+for train_index, test_index in skf:
+    X_train, X_test = X[train_index], X[test_index]
+    y_train, y_test = trainingY[train_index], trainingY[test_index]
+
+    features = fitBinaryNaiveBayes(X_train, y_train)
+    Yprime = predict(X_test, features)
+    print(getSuccessRate(Yprime, y_test))
